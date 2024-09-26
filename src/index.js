@@ -1,11 +1,11 @@
 (function () {
   "use strict";
 
-  console.log("Improved script initialized");
+  console.log("Optimized script for full response capture initialized");
 
   const STATE = {
     PORT: 60001,
-    LOG: true,
+    LOG: false,
     poolingFrequency: 1000,
     checkFrequency: 250,
     waitingForResponse: false,
@@ -71,27 +71,30 @@
     return assistantMessages.length > 0 ? assistantMessages[assistantMessages.length - 1].textContent.trim() : null;
   }
 
-  async function waitForResponse(timeout = 60000) {
+  async function waitForFullResponse(timeout = 300000) { // 5 minutes timeout
     const startTime = Date.now();
-    let lastResponse = getLastAssistantMessage();
+    let lastResponse = null;
 
     while (Date.now() - startTime < timeout) {
       await new Promise(resolve => setTimeout(resolve, STATE.checkFrequency));
+      checkButtons();
+      
       const currentResponse = getLastAssistantMessage();
       
-      if (currentResponse && currentResponse !== lastResponse) {
-        return currentResponse;
+      if (currentResponse !== lastResponse) {
+        lastResponse = currentResponse;
+        log("Response updated:", "blue");
+        log(currentResponse);
       }
 
-      if (!STATE.stopButtonPresent && STATE.sendButtonActive) {
-        // If stop button disappears and send button becomes active, assume response is complete
+      // Check if response generation is complete
+      if (!STATE.stopButtonPresent && !STATE.sendButtonActive) {
+        log("Response generation complete", "green");
         return currentResponse;
       }
-
-      lastResponse = currentResponse;
     }
 
-    throw new Error("Timeout waiting for response");
+    throw new Error("Timeout waiting for full response");
   }
 
   async function simulateWebpageInteraction() {
@@ -124,13 +127,13 @@
         clickElement(sendButton);
         STATE.waitingForResponse = true;
 
-        const newResponse = await waitForResponse();
-        if (!newResponse) {
+        const fullResponse = await waitForFullResponse();
+        if (!fullResponse) {
           throw new Error("No response received from assistant");
         }
-        log("Assistant's response:", "green");
-        log(newResponse);
-        return newResponse;
+        log("Full Assistant's response:", "green");
+        log(fullResponse);
+        return fullResponse;
       } catch (error) {
         log(`Attempt ${retryCount + 1} failed: ${error.message}`, "yellow");
         retryCount++;
