@@ -1,9 +1,13 @@
 const express = require("express");
 const cors = require("cors");
+const { exec } = require('child_process');
+const path = require('path');
 
 const CONFIG = {
   PORT: 60001,
-  TIMEOUT: 30000
+  TIMEOUT: 30000,
+  CHROME_PATH: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  CHROME_USER_DATA_DIR: path.join(process.env.LOCALAPPDATA, 'Google\\Chrome\\User Data'),
 };
 
 const STATE = {
@@ -13,10 +17,53 @@ const STATE = {
   resolveResponse: null
 };
 
-const app = express(); 
+const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+const isChromeRunning = () => {
+  return new Promise((resolve) => {
+    exec('tasklist /FI "IMAGENAME eq chrome.exe"', (error, stdout) => {
+      if (error) {
+        console.error('Error checking Chrome process:', error);
+        resolve(false);
+      } else {
+        resolve(stdout.toLowerCase().includes('chrome.exe'));
+      }
+    });
+  });
+};
+
+const launchChrome = async () => {
+  const chromeRunning = await isChromeRunning();
+  
+  if (chromeRunning) {
+    console.log('Chrome is already running. Skipping launch.');
+    return;
+  }
+
+  const args = [
+    '--incognito',
+    `--user-data-dir="${CONFIG.CHROME_USER_DATA_DIR}"`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    'https://chat.openai.com'
+  ];
+  
+  return new Promise((resolve, reject) => {
+    console.log(`Launching Chrome with command: "${CONFIG.CHROME_PATH}" ${args.join(' ')}`);
+    exec(`"${CONFIG.CHROME_PATH}" ${args.join(' ')}`, (error, stdout, stderr) => {
+      if (error) {
+        console.error('Error launching Chrome:', error);
+        reject(error);
+      } else {
+        console.log('Chrome launched successfully');
+        resolve();
+      }
+    });
+  });
+};
 
 app.post("/ask", async (req, res) => {
   const prompt = req.body.prompt;
@@ -26,7 +73,7 @@ app.post("/ask", async (req, res) => {
   if (STATE.isProcessing) {
     return res.status(429).json({ error: "Currently processing a prompt. Please wait." });
   }
-  
+
   STATE.latestPrompt = prompt;
   STATE.isProcessing = true;
   console.clear();
@@ -87,12 +134,12 @@ app.post("/log-error", (req, res) => {
   const { message } = req.body;
   if (!message || typeof message !== "string") {
     return res.status(400).json({ error: "Valid error message is required" });
-  }
+  } 
   
   STATE.isProcessing = false;
   console.error(`Error occurred: ${message}`);
   
-  if (STATE.resolveResponse) {
+  if (STATE.resolveResponse) { 
     STATE.resolveResponse(null);
     STATE.resolveResponse = null;
   }
@@ -103,8 +150,11 @@ app.post("/log-error", (req, res) => {
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).send('Something broke!');
-});
+}); 
 
-app.listen(CONFIG.PORT, () => {
+// Check if Chrome is running and launch it if it's not
+launchChrome();
+
+const server = app.listen(CONFIG.PORT, () => {
   console.log(`Server is running on http://localhost:${CONFIG.PORT}`);
 });

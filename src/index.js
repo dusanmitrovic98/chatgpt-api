@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  console.log("Optimized script for full response capture initialized");
+  console.log("Hello World!!!");
 
   const STATE = {
     PORT: 60001,
